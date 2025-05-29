@@ -3,6 +3,7 @@ const headers = @import("./headers.zig");
 const HeadTable = @import("./tables/head.zig").HeadTable;
 const MaxpTable = @import("./tables/maxp.zig").MaxpTable;
 const LocaTable = @import("./tables/loca.zig").LocaTable;
+const GlyfTable = @import("./tables/glyf.zig").GlyfTable;
 
 const TableDirectory = headers.TableDirectory;
 const OffsetTable = headers.OffsetTable;
@@ -64,6 +65,11 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
     const loca_table = try LocaTable.parse(allocator, loca_reader, maxp_table.num_glyphs, head_table.index_to_loc_format);
     defer loca_table.deinit(allocator);
     std.debug.print("offsets: {d}\n", .{loca_table.offsets.len});
+
+    const glyf_data = getTableData(table_directories, table_data, "glyf");
+    const glyf_table = try GlyfTable.parse(allocator, glyf_data, loca_table.offsets);
+    defer glyf_table.deinit(allocator);
+    std.debug.print("Glyphs: {d}\n", .{glyf_table.glyphs.len});
 
     return Font{};
 }

@@ -15,7 +15,7 @@ pub const LocaTable = struct {
             var i: usize = 0;
             while (i < offsets.len) : (i += 1) {
                 const offset = try reader.readInt(u16, .big);
-                offsets[i] = @intCast(offset * 2);
+                offsets[i] = @as(u32, @intCast(offset)) * 2;
             }
         }
 
