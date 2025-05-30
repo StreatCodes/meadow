@@ -33,6 +33,15 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
+    const sdl3 = b.dependency("sdl3", .{
+        .target = target,
+        .optimize = optimize,
+        .callbacks = false,
+        .ext_image = true,
+    });
+
+    exe.root_module.addImport("sdl3", sdl3.module("sdl3"));
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).

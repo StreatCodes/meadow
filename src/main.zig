@@ -1,5 +1,10 @@
 const std = @import("std");
 const Font = @import("./ttf/Font.zig");
+const sdl = @import("sdl3");
+const Atlas = @import("./Atlas.zig");
+
+const SCREEN_WIDTH = 1920;
+const SCREEN_HEIGHT = 1080;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -20,5 +25,31 @@ pub fn main() !void {
 
     //Parse font
     const reader = font_file.reader().any();
-    _ = try Font.parse(allocator, reader);
+    const font = try Font.parse(allocator, reader);
+    defer font.deinit(allocator);
+
+    defer sdl.init.shutdown();
+
+    const init_flags = sdl.init.Flags{ .video = true };
+    try sdl.init.init(init_flags);
+    defer sdl.init.quit(init_flags);
+
+    const window = try sdl.video.Window.init("Meadow", SCREEN_WIDTH, SCREEN_HEIGHT, .{});
+    defer window.deinit();
+
+    const surface = try window.getSurface();
+    try surface.fillRect(null, surface.mapRgb(50, 50, 50));
+
+    const glyph = font.glyf_table.glyphs[9];
+    const glyph_surface = try Atlas.render_gylph(glyph);
+    try glyph_surface.blit(null, surface, null);
+
+    try window.updateSurface();
+    while (true) {
+        switch ((try sdl.events.wait(true)).?) {
+            .quit => break,
+            .terminating => break,
+            else => {},
+        }
+    }
 }

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const GlyphType = enum { simple, compound, empty };
-const GlyphEntry = union(GlyphType) {
+pub const Glyph = union(GlyphType) {
     simple: SimpleGlyph,
     compound: CompoundGlyph,
     empty: void,
@@ -82,20 +82,17 @@ const SimpleGlyph = struct {
         for (0..coordinate_count) |j| {
             const short = glyph.flags[j].x_short_vector == 1;
             const same = glyph.flags[j].x_is_same == 1;
+            const prev = if (j == 0) 0 else glyph.x_coordinate[j - 1];
 
             if (short) {
                 const data = try reader.readInt(u8, .big);
                 var value: i16 = @intCast(data);
                 if (!same) value = -value;
-                glyph.x_coordinate[j] = value;
+                glyph.x_coordinate[j] = prev + value;
             } else if (same) {
-                if (j == 0) {
-                    glyph.x_coordinate[j] = 0;
-                    continue;
-                }
-                glyph.x_coordinate[j] = glyph.x_coordinate[j - 1];
+                glyph.x_coordinate[j] = prev;
             } else {
-                glyph.x_coordinate[j] = try reader.readInt(i16, .big);
+                glyph.x_coordinate[j] = prev + try reader.readInt(i16, .big);
             }
         }
 
@@ -104,20 +101,17 @@ const SimpleGlyph = struct {
         for (0..coordinate_count) |j| {
             const short = glyph.flags[j].y_short_vector == 1;
             const same = glyph.flags[j].y_is_same == 1;
+            const prev = if (j == 0) 0 else glyph.y_coordinate[j - 1];
 
             if (short) {
                 const data = try reader.readInt(u8, .big);
                 var value: i16 = @intCast(data);
                 if (!same) value = -value;
-                glyph.y_coordinate[j] = value;
+                glyph.y_coordinate[j] = prev + value;
             } else if (same) {
-                if (j == 0) {
-                    glyph.y_coordinate[j] = 0;
-                    continue;
-                }
-                glyph.y_coordinate[j] = glyph.y_coordinate[j - 1];
+                glyph.y_coordinate[j] = prev;
             } else {
-                glyph.y_coordinate[j] = try reader.readInt(i16, .big);
+                glyph.y_coordinate[j] = prev + try reader.readInt(i16, .big);
             }
         }
 
@@ -136,11 +130,11 @@ const SimpleGlyph = struct {
 const CompoundGlyph = struct {};
 
 pub const GlyfTable = struct {
-    glyphs: []GlyphEntry,
+    glyphs: []Glyph,
 
     pub fn parse(allocator: std.mem.Allocator, glyf_table_data: []u8, glyph_offsets: []u32) !GlyfTable {
         const num_glyphs = glyph_offsets.len - 1;
-        var glyphs = try std.ArrayList(GlyphEntry).initCapacity(allocator, num_glyphs);
+        var glyphs = try std.ArrayList(Glyph).initCapacity(allocator, num_glyphs);
 
         for (0..num_glyphs) |i| {
             const start = glyph_offsets[i];
@@ -150,18 +144,18 @@ pub const GlyfTable = struct {
             const reader = stream.reader().any();
 
             if (start == end) {
-                try glyphs.append(GlyphEntry{ .empty = void{} });
+                try glyphs.append(Glyph{ .empty = void{} });
                 continue;
             }
 
             const contour_count = try reader.readInt(i16, .big);
             if (contour_count < 0) {
                 std.debug.print("Warning skipping compound glyph ({d}) TODO\n", .{i});
-                try glyphs.append(GlyphEntry{ .compound = CompoundGlyph{} });
+                try glyphs.append(Glyph{ .compound = CompoundGlyph{} });
                 continue;
             } else {
                 const glyph = try SimpleGlyph.parse(allocator, reader, @intCast(contour_count));
-                try glyphs.append(GlyphEntry{ .simple = glyph });
+                try glyphs.append(Glyph{ .simple = glyph });
             }
         }
 

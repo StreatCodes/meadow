@@ -9,6 +9,11 @@ const TableDirectory = headers.TableDirectory;
 const OffsetTable = headers.OffsetTable;
 const Font = @This();
 
+head_table: HeadTable,
+loca_table: LocaTable,
+maxp_table: MaxpTable,
+glyf_table: GlyfTable,
+
 fn getTableData(directory: []TableDirectory, table_data: []u8, tag: []const u8) []u8 {
     const headers_length = @sizeOf(OffsetTable) + (@sizeOf(TableDirectory) * directory.len);
     for (directory) |table_info| {
@@ -63,13 +68,21 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
     var loca_stream = std.io.fixedBufferStream(loca_data);
     const loca_reader = loca_stream.reader().any();
     const loca_table = try LocaTable.parse(allocator, loca_reader, maxp_table.num_glyphs, head_table.index_to_loc_format);
-    defer loca_table.deinit(allocator);
     std.debug.print("offsets: {d}\n", .{loca_table.offsets.len});
 
     const glyf_data = getTableData(table_directories, table_data, "glyf");
     const glyf_table = try GlyfTable.parse(allocator, glyf_data, loca_table.offsets);
-    defer glyf_table.deinit(allocator);
     std.debug.print("Glyphs: {d}\n", .{glyf_table.glyphs.len});
 
-    return Font{};
+    return Font{
+        .head_table = head_table,
+        .loca_table = loca_table,
+        .maxp_table = maxp_table,
+        .glyf_table = glyf_table,
+    };
+}
+
+pub fn deinit(font: Font, allocator: std.mem.Allocator) void {
+    defer font.glyf_table.deinit(allocator);
+    defer font.loca_table.deinit(allocator);
 }
