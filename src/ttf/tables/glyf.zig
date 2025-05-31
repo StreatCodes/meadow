@@ -26,7 +26,7 @@ const GlyphFlag = packed struct {
     padding: u2,
 };
 
-const SimpleGlyph = struct {
+pub const SimpleGlyph = struct {
     x_min: i16, // Minimum x for coordinate data
     y_min: i16, // Minimum y for coordinate data
     x_max: i16, // Maximum x for coordinate data
