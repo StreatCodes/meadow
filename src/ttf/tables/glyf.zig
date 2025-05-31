@@ -7,7 +7,7 @@ pub const Glyph = union(GlyphType) {
     empty: void,
 };
 
-const GlyphFlag = packed struct {
+pub const GlyphFlag = packed struct {
     on_curve: u1, // If set, the point is on the curve; Otherwise, it is off the curve.
     x_short_vector: u1, // If set, the corresponding x-coordinate is 1 byte long; Otherwise, the corresponding x-coordinate is 2 bytes long
     y_short_vector: u1, // If set, the corresponding y-coordinate is 1 byte long; Otherwise, the corresponding y-coordinate is 2 bytes long
