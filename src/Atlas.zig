@@ -77,7 +77,7 @@ const GlyphPoint = struct {
 /// - Ensure first point is on_curve
 /// - Ensure last point is on_curve and matches the first point
 /// - Expand consecutive off_curve points so that it has a real on_curve point between them
-fn normalize(allocator: std.mem.Allocator, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]GlyphPoint {
+fn normalize(allocator: std.mem.Allocator, offset: GlyphOffset, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]GlyphPoint {
     var points = try std.ArrayList(GlyphPoint).initCapacity(allocator, flags.len);
 
     //Handle instance where the first value is a curve
@@ -86,15 +86,19 @@ fn normalize(allocator: std.mem.Allocator, flags: []glyf.GlyphFlag, x_coords: []
         const last_flag = flags[last_idx];
         if (last_flag.on_curve == 1) {
             try points.append(GlyphPoint{
-                .x = x_coords[last_idx],
-                .y = y_coords[last_idx],
+                .x = x_coords[last_idx] + offset.x,
+                .y = y_coords[last_idx] + offset.y,
                 .on_curve = true,
             });
         } else {
             //Create implicit midpoint
             const x = midpoint_i16(x_coords[0], x_coords[last_idx]);
             const y = midpoint_i16(y_coords[0], y_coords[last_idx]);
-            try points.append(GlyphPoint{ .x = x, .y = y, .on_curve = true });
+            try points.append(GlyphPoint{
+                .x = x + offset.x,
+                .y = y + offset.y,
+                .on_curve = true,
+            });
         }
     }
 
@@ -102,8 +106,8 @@ fn normalize(allocator: std.mem.Allocator, flags: []glyf.GlyphFlag, x_coords: []
     for (0..flags.len) |i| {
         const on_curve = flags[i].on_curve == 1;
         try points.append(GlyphPoint{
-            .x = x_coords[i],
-            .y = y_coords[i],
+            .x = x_coords[i] + offset.x,
+            .y = y_coords[i] + offset.y,
             .on_curve = on_curve,
         });
 
@@ -113,7 +117,11 @@ fn normalize(allocator: std.mem.Allocator, flags: []glyf.GlyphFlag, x_coords: []
             if (flags[i + 1].on_curve == 0) {
                 const x = midpoint_i16(x_coords[i], x_coords[i + 1]);
                 const y = midpoint_i16(y_coords[i], y_coords[i + 1]);
-                try points.append(GlyphPoint{ .x = x, .y = y, .on_curve = true });
+                try points.append(GlyphPoint{
+                    .x = x + offset.x,
+                    .y = y + offset.y,
+                    .on_curve = true,
+                });
             }
         }
     }
@@ -131,14 +139,13 @@ fn render_contour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
     for (0..points.len - 1) |i| {
         const point = points[i];
         const next_point = points[i + 1];
-        std.debug.print("drawing point {d} {d}\n", .{ point.x, point.y });
 
         //Draw straight line
         if (point.on_curve and next_point.on_curve) {
             try draw_line(
                 surface,
-                sdl.rect.IPoint{ .x = @intCast(@divTrunc(point.x + 100, 2)), .y = @intCast(@divTrunc(point.y + 100, 2)) },
-                sdl.rect.IPoint{ .x = @intCast(@divTrunc(next_point.x + 100, 2)), .y = @intCast(@divTrunc(next_point.y + 100, 2)) },
+                sdl.rect.IPoint{ .x = point.x, .y = point.y },
+                sdl.rect.IPoint{ .x = next_point.x, .y = next_point.y },
             );
             continue;
         }
@@ -153,9 +160,9 @@ fn render_contour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
             const prev_point = points[i - 1];
             try draw_curve(
                 surface,
-                sdl.rect.IPoint{ .x = @intCast(@divTrunc(prev_point.x + 100, 2)), .y = @intCast(@divTrunc(prev_point.y + 100, 2)) },
-                sdl.rect.IPoint{ .x = @intCast(@divTrunc(point.x + 100, 2)), .y = @intCast(@divTrunc(point.y + 100, 2)) },
-                sdl.rect.IPoint{ .x = @intCast(@divTrunc(next_point.x + 100, 2)), .y = @intCast(@divTrunc(next_point.y + 100, 2)) },
+                sdl.rect.IPoint{ .x = prev_point.x, .y = prev_point.y },
+                sdl.rect.IPoint{ .x = point.x, .y = point.y },
+                sdl.rect.IPoint{ .x = next_point.x, .y = next_point.y },
             );
             continue;
         }
@@ -167,10 +174,22 @@ fn render_contour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
     }
 }
 
+//Shift the glyph so that it starts at 0,0. TTFs can start in the negative.
+const GlyphOffset = struct {
+    x: i16,
+    y: i16,
+};
+
 /// Render a glyph to a new surface. It is the callers responsibility to destroy the returned surface.
-pub fn render_gylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph) !sdl.surface.Surface {
+pub fn render_gylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, size: u32) !sdl.surface.Surface {
+    _ = size;
     const glyph = _glyph.simple; //TODO remove this eventually
-    const surface = try sdl.surface.Surface.init(3000, 3000, sdl.pixels.Format.array_rgb_24);
+    const offset = GlyphOffset{
+        .x = -glyph.x_min,
+        .y = -glyph.y_min,
+    };
+    const surface = try sdl.surface.Surface.init(@intCast(glyph.x_max + offset.x + 1), @intCast(glyph.y_max + offset.y + 1), sdl.pixels.Format.array_rgb_24);
+    std.debug.print("Surface: {d} {d}\n", .{ surface.getWidth(), surface.getHeight() });
 
     var start: usize = 0;
     for (glyph.contour_end_points) |_end| {
@@ -179,13 +198,11 @@ pub fn render_gylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph) !sdl.surfa
         const x_coords = glyph.x_coordinate[start .. end + 1];
         const y_coords = glyph.y_coordinate[start .. end + 1];
 
-        std.debug.print("Normalizing {any}\n", .{x_coords});
-
-        const points = try normalize(allocator, flags, x_coords, y_coords);
+        const points = try normalize(allocator, offset, flags, x_coords, y_coords);
         defer allocator.free(points);
 
         //Flip Y axis so it matches SDL 0,0 being top left rather than TTF's bottom left
-        for (0..points.len) |i| points[i].y = glyph.y_max - points[i].y;
+        for (0..points.len) |i| points[i].y = glyph.y_max + offset.y - points[i].y;
 
         std.debug.print("Rendering contour {d}-{d}\n", .{ start, end });
         try render_contour(surface, points);
