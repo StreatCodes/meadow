@@ -41,7 +41,7 @@ pub fn main() !void {
     try surface.fillRect(null, surface.mapRgb(50, 50, 50));
 
     const glyph = font.glyf_table.glyphs[1031];
-    const glyph_surface = try Atlas.render_gylph(allocator, glyph, 72);
+    const glyph_surface = try Atlas.render_gylph(allocator, glyph, font.head_table.units_per_em, 72);
     defer glyph_surface.deinit();
     try glyph_surface.blit(null, surface, sdl.rect.IPoint{ .x = 10, .y = 10 });
 
