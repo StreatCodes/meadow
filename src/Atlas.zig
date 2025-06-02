@@ -2,7 +2,7 @@ const std = @import("std");
 const sdl = @import("sdl3");
 const Font = @import("./ttf/Font.zig");
 const glyf = @import("./ttf/tables/glyf.zig");
-const line = @import("./text_renderer/line.zig");
+const draw = @import("./text_renderer/draw.zig");
 
 fn midpoint_i16(a: i16, b: i16) i16 {
     return @intCast(@divTrunc((@as(i32, a) + @as(i32, b)), 2));
@@ -92,7 +92,7 @@ fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
 
         //Draw straight line
         if (point.on_curve and next_point.on_curve) {
-            try line.drawLine(
+            try draw.drawLine(
                 surface,
                 sdl.rect.FPoint{ .x = point.x, .y = point.y },
                 sdl.rect.FPoint{ .x = next_point.x, .y = next_point.y },
@@ -109,7 +109,7 @@ fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
         //Draw curve
         if (!point.on_curve and next_point.on_curve) {
             const prev_point = points[i - 1];
-            try line.drawBezier(
+            try draw.drawBezier(
                 surface,
                 sdl.rect.FPoint{ .x = prev_point.x, .y = prev_point.y },
                 sdl.rect.FPoint{ .x = point.x, .y = point.y },
