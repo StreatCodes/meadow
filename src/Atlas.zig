@@ -5,7 +5,7 @@ const glyf = @import("./ttf/tables/glyf.zig");
 const draw = @import("./text_renderer/draw.zig");
 
 /// Draws a bezier curve - vibe coded from claude
-fn draw_curve(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control: sdl.rect.FPoint, end: sdl.rect.FPoint) !void {
+fn drawCurve(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control: sdl.rect.FPoint, end: sdl.rect.FPoint) !void {
     // Calculate approximate curve length to determine step count
     const d1x = control.x - start.x;
     const d1y = control.y - start.y;
@@ -115,7 +115,7 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
     return points.toOwnedSlice();
 }
 
-fn render_contour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
+fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
     for (0..points.len - 1) |i| {
         const point = points[i];
         const next_point = points[i + 1];
@@ -139,7 +139,7 @@ fn render_contour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
         //Draw curve
         if (!point.on_curve and next_point.on_curve) {
             const prev_point = points[i - 1];
-            try draw_curve(
+            try drawCurve(
                 surface,
                 sdl.rect.FPoint{ .x = prev_point.x, .y = prev_point.y },
                 sdl.rect.FPoint{ .x = point.x, .y = point.y },
@@ -163,7 +163,7 @@ const GlyphProperties = struct {
 };
 
 /// Render a glyph to a new surface. It is the callers responsibility to destroy the returned surface.
-pub fn render_gylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_em: u116, point_size: f32) !sdl.surface.Surface {
+pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_em: u116, point_size: f32) !sdl.surface.Surface {
     const scale = point_size / @as(f32, @floatFromInt(units_per_em));
     std.debug.print("Rendering glyph {d}pt (scale {d})\n", .{ point_size, scale });
 
@@ -192,7 +192,7 @@ pub fn render_gylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_
         defer allocator.free(points);
 
         std.debug.print("Rendering contour {d}-{d}\n", .{ start, end });
-        try render_contour(surface, points);
+        try renderContour(surface, points);
         start = end + 1;
     }
 
