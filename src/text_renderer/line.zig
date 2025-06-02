@@ -16,7 +16,10 @@ pub fn drawLine(surface: sdl.surface.Surface, from: sdl.rect.FPoint, to: sdl.rec
 
             if (coverage > 0) {
                 const int_coverage: u8 = @intFromFloat(@floor(255 * coverage));
-                try surface.writePixel(x, y, sdl.pixels.Color{ .r = int_coverage, .g = int_coverage, .b = int_coverage, .a = 255 });
+                const pixel = try surface.readPixel(x, y);
+                if (pixel.r < int_coverage) {
+                    try surface.writePixel(x, y, sdl.pixels.Color{ .r = int_coverage, .g = int_coverage, .b = int_coverage, .a = 255 });
+                }
             }
         }
     }
@@ -71,4 +74,36 @@ fn pointToLineSegmentDistance(px: f32, py: f32, from: sdl.rect.FPoint, to: sdl.r
     const dist_x = px - closest_x;
     const dist_y = py - closest_y;
     return @sqrt(dist_x * dist_x + dist_y * dist_y);
+}
+
+/// Draws a bezier curve - vibe coded from claude
+pub fn drawBezier(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control: sdl.rect.FPoint, end: sdl.rect.FPoint) !void {
+    // Calculate approximate curve length to determine step count
+    const d1x = control.x - start.x;
+    const d1y = control.y - start.y;
+    const d2x = end.x - control.x;
+    const d2y = end.y - control.y;
+    const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
+    const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length))));
+
+    var points: [1000]sdl.rect.FPoint = undefined;
+
+    for (0..steps) |i| {
+        const t = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(steps - 1));
+        const inv_t = 1.0 - t;
+
+        // Quadratic Bézier formula: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
+        const x = inv_t * inv_t * start.x +
+            2.0 * inv_t * t * control.x +
+            t * t * end.x;
+        const y = inv_t * inv_t * start.y +
+            2.0 * inv_t * t * control.y +
+            t * t * end.y;
+
+        points[i] = sdl.rect.FPoint{ .x = x, .y = y };
+    }
+
+    for (0..steps - 1) |i| {
+        try drawLine(surface, points[i], points[i + 1], 1.0);
+    }
 }

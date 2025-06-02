@@ -4,36 +4,6 @@ const Font = @import("./ttf/Font.zig");
 const glyf = @import("./ttf/tables/glyf.zig");
 const line = @import("./text_renderer/line.zig");
 
-/// Draws a bezier curve - vibe coded from claude
-fn drawCurve(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control: sdl.rect.FPoint, end: sdl.rect.FPoint) !void {
-    // Calculate approximate curve length to determine step count
-    const d1x = control.x - start.x;
-    const d1y = control.y - start.y;
-    const d2x = end.x - control.x;
-    const d2y = end.y - control.y;
-    const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
-    const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length * 2))));
-
-    for (0..steps) |i| {
-        const t = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(steps - 1));
-        const inv_t = 1.0 - t;
-
-        // Quadratic Bézier formula: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
-        const x = inv_t * inv_t * start.x +
-            2.0 * inv_t * t * control.x +
-            t * t * end.x;
-        const y = inv_t * inv_t * start.y +
-            2.0 * inv_t * t * control.y +
-            t * t * end.y;
-
-        try surface.writePixel(
-            @intCast(@as(i16, @intFromFloat(x))),
-            @intCast(@as(i16, @intFromFloat(y))),
-            sdl.pixels.Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
-        );
-    }
-}
-
 fn midpoint_i16(a: i16, b: i16) i16 {
     return @intCast(@divTrunc((@as(i32, a) + @as(i32, b)), 2));
 }
@@ -139,7 +109,7 @@ fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
         //Draw curve
         if (!point.on_curve and next_point.on_curve) {
             const prev_point = points[i - 1];
-            try drawCurve(
+            try line.drawBezier(
                 surface,
                 sdl.rect.FPoint{ .x = prev_point.x, .y = prev_point.y },
                 sdl.rect.FPoint{ .x = point.x, .y = point.y },
