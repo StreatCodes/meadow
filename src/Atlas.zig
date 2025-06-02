@@ -2,34 +2,7 @@ const std = @import("std");
 const sdl = @import("sdl3");
 const Font = @import("./ttf/Font.zig");
 const glyf = @import("./ttf/tables/glyf.zig");
-
-/// Draws a line between two points - vibe coded from claude
-fn draw_line(surface: sdl.surface.Surface, from: sdl.rect.FPoint, to: sdl.rect.FPoint) !void {
-    const dx = @abs(to.x - from.x);
-    const dy = @abs(to.y - from.y);
-    const sx: f32 = if (from.x < to.x) 1 else -1;
-    const sy: f32 = if (from.y < to.y) 1 else -1;
-    var err = dx - dy;
-
-    var x = from.x;
-    var y = from.y;
-
-    while (true) {
-        try surface.writePixel(@intFromFloat(x), @intFromFloat(y), sdl.pixels.Color{ .r = 255, .g = 255, .b = 255, .a = 255 });
-
-        if (x == to.x and y == to.y) break;
-
-        const e2 = 2 * err;
-        if (e2 > -dy) {
-            err -= dy;
-            x += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
-            y += sy;
-        }
-    }
-}
+const draw = @import("./text_renderer/draw.zig");
 
 /// Draws a bezier curve - vibe coded from claude
 fn draw_curve(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control: sdl.rect.FPoint, end: sdl.rect.FPoint) !void {
@@ -131,6 +104,14 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
         .y = points.items[0].y,
         .on_curve = true,
     });
+
+    //Flip Y axis so it matches SDL 0,0 being top left rather than TTF's bottom left and scale the glyph
+    for (points.items) |*point| {
+        point.*.y = glyph_properties.max_y - point.*.y;
+        point.*.x *= glyph_properties.scale;
+        point.*.y *= glyph_properties.scale;
+    }
+
     return points.toOwnedSlice();
 }
 
@@ -141,10 +122,11 @@ fn render_contour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
 
         //Draw straight line
         if (point.on_curve and next_point.on_curve) {
-            try draw_line(
+            try draw.drawLine(
                 surface,
                 sdl.rect.FPoint{ .x = point.x, .y = point.y },
                 sdl.rect.FPoint{ .x = next_point.x, .y = next_point.y },
+                1.0,
             );
             continue;
         }
@@ -176,17 +158,20 @@ fn render_contour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
 const GlyphProperties = struct {
     offset_x: i16, //Shift the x so it starts at 0
     offset_y: i16, //Shift the y so it starts at 0
+    max_y: f32,
     scale: f32,
 };
 
 /// Render a glyph to a new surface. It is the callers responsibility to destroy the returned surface.
 pub fn render_gylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_em: u116, point_size: f32) !sdl.surface.Surface {
     const scale = point_size / @as(f32, @floatFromInt(units_per_em));
+    std.debug.print("Rendering glyph {d}pt (scale {d})\n", .{ point_size, scale });
 
     const glyph = _glyph.simple; //TODO remove this eventually
     const glyph_properties = GlyphProperties{
         .offset_x = -glyph.x_min,
         .offset_y = -glyph.y_min,
+        .max_y = @floatFromInt(glyph.y_max + -glyph.y_min),
         .scale = scale,
     };
     const surface = try sdl.surface.Surface.init(
@@ -205,9 +190,6 @@ pub fn render_gylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_
 
         const points = try normalize(allocator, glyph_properties, flags, x_coords, y_coords);
         defer allocator.free(points);
-
-        //Flip Y axis so it matches SDL 0,0 being top left rather than TTF's bottom left
-        for (0..points.len) |i| points[i].y = @as(f32, @floatFromInt(glyph.y_max + glyph_properties.offset_y)) - points[i].y;
 
         std.debug.print("Rendering contour {d}-{d}\n", .{ start, end });
         try render_contour(surface, points);
