@@ -2,7 +2,7 @@ const std = @import("std");
 const sdl = @import("sdl3");
 const Font = @import("./ttf/Font.zig");
 const glyf = @import("./ttf/tables/glyf.zig");
-const draw = @import("./text_renderer/draw.zig");
+const line = @import("./text_renderer/line.zig");
 
 /// Draws a bezier curve - vibe coded from claude
 fn drawCurve(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control: sdl.rect.FPoint, end: sdl.rect.FPoint) !void {
@@ -122,7 +122,7 @@ fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
 
         //Draw straight line
         if (point.on_curve and next_point.on_curve) {
-            try draw.drawLine(
+            try line.drawLine(
                 surface,
                 sdl.rect.FPoint{ .x = point.x, .y = point.y },
                 sdl.rect.FPoint{ .x = next_point.x, .y = next_point.y },
