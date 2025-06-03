@@ -84,7 +84,7 @@ pub fn drawBezier(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control:
     const d2x = end.x - control.x;
     const d2y = end.y - control.y;
     const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
-    const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length))));
+    const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length * 2))));
 
     var points: [1000]sdl.rect.FPoint = undefined;
 
@@ -104,6 +104,42 @@ pub fn drawBezier(surface: sdl.surface.Surface, start: sdl.rect.FPoint, control:
     }
 
     for (0..steps - 1) |i| {
-        try drawLine(surface, points[i], points[i + 1], 1.0);
+        try drawClosestPixels(surface, points[i]);
+    }
+}
+
+/// Takes a FPoint and colors the 9 pixels that intersect with it based on coverage
+/// from the center of the pixel.
+fn drawClosestPixels(surface: sdl.surface.Surface, point: sdl.rect.FPoint) !void {
+    const base_x: usize = @intFromFloat(@floor(point.x));
+    const base_y: usize = @intFromFloat(@floor(point.y));
+
+    const start_x = if (base_x == 0) base_x else base_x - 1;
+    const end_x = if (base_x == surface.getWidth() - 1) base_x else base_x + 1;
+    const start_y = if (base_y == 0) base_y else base_y - 1;
+    const end_y = if (base_y == surface.getHeight() - 1) base_y else base_y + 1;
+
+    for (start_y..end_y + 1) |_y| {
+        const y = @as(f32, @floatFromInt(_y)) + 0.5;
+        for (start_x..end_x + 1) |_x| {
+            const x = @as(f32, @floatFromInt(_x)) + 0.5;
+
+            const dist_x = point.x - x;
+            const dist_y = point.y - y;
+            const distance = @sqrt(dist_x * dist_x + dist_y * dist_y);
+
+            const distance_capped = @min(distance, 1.0);
+            const brightness: u8 = @intFromFloat(@ceil(255 * (1.0 - distance_capped)));
+            if (brightness == 0) continue;
+
+            const prev_color = try surface.readPixel(_x, _y);
+            if (brightness > prev_color.r) {
+                try surface.writePixel(
+                    _x,
+                    _y,
+                    sdl.pixels.Color{ .r = brightness, .g = brightness, .b = brightness, .a = 255 },
+                );
+            }
+        }
     }
 }

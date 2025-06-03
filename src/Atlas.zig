@@ -80,6 +80,10 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
         point.*.y = glyph_properties.max_y - point.*.y;
         point.*.x *= glyph_properties.scale;
         point.*.y *= glyph_properties.scale;
+
+        //Add a 1 pixel border so that anti-aliasing can be applied to the edges of the glyph
+        point.*.x += 1;
+        point.*.y += 1;
     }
 
     return points.toOwnedSlice();
@@ -144,9 +148,12 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
         .max_y = @floatFromInt(glyph.y_max + -glyph.y_min),
         .scale = scale,
     };
+
+    const max_x_offset: f32 = @floatFromInt(glyph.x_max + glyph_properties.offset_x);
+    const max_y_offset: f32 = @floatFromInt(glyph.y_max + glyph_properties.offset_y);
     const surface = try sdl.surface.Surface.init(
-        @intCast(glyph.x_max + glyph_properties.offset_x + 1),
-        @intCast(glyph.y_max + glyph_properties.offset_y + 1),
+        @intFromFloat(@ceil(max_x_offset * scale) + 2),
+        @intFromFloat(@ceil(max_y_offset * scale) + 2),
         sdl.pixels.Format.array_rgb_24,
     );
     std.debug.print("Surface: {d} {d}\n", .{ surface.getWidth(), surface.getHeight() });
@@ -154,7 +161,7 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
     var start: usize = 0;
     for (glyph.contour_end_points) |_end| {
         const end: usize = @intCast(_end);
-        const flags = glyph.flags[start .. end + 1]; //Why is this + 1???
+        const flags = glyph.flags[start .. end + 1];
         const x_coords = glyph.x_coordinate[start .. end + 1];
         const y_coords = glyph.y_coordinate[start .. end + 1];
 

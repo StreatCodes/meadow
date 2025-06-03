@@ -3,8 +3,8 @@ const Font = @import("./ttf/Font.zig");
 const sdl = @import("sdl3");
 const Atlas = @import("./Atlas.zig");
 
-const SCREEN_WIDTH = 1920;
-const SCREEN_HEIGHT = 1080;
+const SCREEN_WIDTH = 1280;
+const SCREEN_HEIGHT = 720;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
