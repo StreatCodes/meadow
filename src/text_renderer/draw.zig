@@ -2,49 +2,35 @@ const std = @import("std");
 const sdl = @import("sdl3");
 
 // Main function to draw an anti-aliased line
-pub fn drawLine(surface: sdl.surface.Surface, from: sdl.rect.FPoint, to: sdl.rect.FPoint, line_width: f32) !void {
+pub fn drawLine(surface: sdl.surface.Surface, from: sdl.rect.FPoint, to: sdl.rect.FPoint) !void {
     const start_x: usize = @intFromFloat(@floor(@min(from.x, to.x)));
     const start_y: usize = @intFromFloat(@floor(@min(from.y, to.y)));
     const end_x: usize = @intFromFloat(@ceil(@max(from.x, to.x)));
     const end_y: usize = @intFromFloat(@ceil(@max(from.y, to.y)));
 
     // Process each pixel in the bounding box
-    for (start_y..end_y + 1) |y| {
-        for (start_x..end_x + 1) |x| {
-            // Calculate coverage for this pixel
-            const coverage = calculatePixelCoverage(@floatFromInt(x), @floatFromInt(y), from, to, line_width);
+    for (start_y..end_y + 1) |_y| {
+        const y = @as(f32, @floatFromInt(_y)) + 0.5;
+        for (start_x..end_x + 1) |_x| {
+            const x = @as(f32, @floatFromInt(_x)) + 0.5;
 
-            if (coverage > 0) {
-                const int_coverage: u8 = @intFromFloat(@floor(255 * coverage));
-                const pixel = try surface.readPixel(x, y);
-                if (pixel.r < int_coverage) {
-                    try surface.writePixel(x, y, sdl.pixels.Color{ .r = int_coverage, .g = int_coverage, .b = int_coverage, .a = 255 });
-                }
+            // Calculate distance from pixel center to line segment
+            const distance = pointToLineSegmentDistance(x, y, from, to);
+            const distance_capped = @min(distance, 1.0);
+
+            const brightness: u8 = @intFromFloat(@ceil(255 * (1.0 - distance_capped)));
+            if (brightness == 0) continue;
+
+            const prev_color = try surface.readPixel(_x, _y);
+            if (brightness > prev_color.r) {
+                try surface.writePixel(
+                    _x,
+                    _y,
+                    sdl.pixels.Color{ .r = brightness, .g = brightness, .b = brightness, .a = 255 },
+                );
             }
         }
     }
-}
-
-// Calculate how much of a pixel is covered by the line
-fn calculatePixelCoverage(pixel_x: f32, pixel_y: f32, from: sdl.rect.FPoint, to: sdl.rect.FPoint, line_width: f32) f32 {
-    // Get pixel center
-    const px = pixel_x + 0.5;
-    const py = pixel_y + 0.5;
-
-    // Calculate distance from pixel center to line segment
-    const distance = pointToLineSegmentDistance(px, py, from, to);
-
-    // Convert distance to coverage (0 = no coverage, 1 = full coverage)
-    const halfWidth = line_width * 0.5;
-
-    if (distance > halfWidth + 0.5) {
-        return 0; // Too far from line
-    }
-
-    // Linear falloff from line center to edge
-    // You can experiment with different falloff functions here
-    const coverage = @max(0, 1 - (distance - halfWidth) / 0.5);
-    return @min(1, coverage);
 }
 
 // Calculate perpendicular distance from point to line segment

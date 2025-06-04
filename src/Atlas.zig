@@ -100,7 +100,6 @@ fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
                 surface,
                 sdl.rect.FPoint{ .x = point.x, .y = point.y },
                 sdl.rect.FPoint{ .x = next_point.x, .y = next_point.y },
-                1.0,
             );
             continue;
         }
