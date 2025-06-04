@@ -2,7 +2,7 @@ const std = @import("std");
 const sdl = @import("sdl3");
 const Font = @import("./ttf/Font.zig");
 const glyf = @import("./ttf/tables/glyf.zig");
-const stroke = @import("./text_renderer/stroke.zig");
+const fill = @import("./text_renderer/fill.zig");
 
 const FPoint = sdl.rect.FPoint;
 
@@ -24,6 +24,7 @@ const GlyphPoint = struct {
 /// - Ensure first point is on_curve
 /// - Ensure last point is on_curve and matches the first point
 /// - Expand consecutive off_curve points so that it has a real on_curve point between them
+/// TODO i think this function belongs in the TTF parser, not here. (minus contourToLinePoints)
 fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]FPoint {
     var points = try std.ArrayList(GlyphPoint).initCapacity(allocator, flags.len);
     defer points.deinit();
@@ -166,16 +167,6 @@ fn contourToLinePoints(allocator: std.mem.Allocator, glyph_points: []GlyphPoint)
     return line_points.toOwnedSlice();
 }
 
-fn fillPoints(surface: sdl.surface.Surface, contours: [][]FPoint) !void {
-    for (contours) |points| {
-        for (0..points.len - 1) |i| {
-            const point = points[i];
-            const next_point = points[i + 1];
-            try stroke.drawLine(surface, point, next_point);
-        }
-    }
-}
-
 const GlyphProperties = struct {
     offset_x: i16, //Shift the x so it starts at 0
     offset_y: i16, //Shift the y so it starts at 0
@@ -226,7 +217,7 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
     }
 
     std.debug.print("Drawing {} contours\n", .{contours.len});
-    try fillPoints(surface, contours);
+    try fill.fillOutline(surface, contours);
 
     return surface;
 }
