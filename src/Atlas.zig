@@ -4,23 +4,29 @@ const Font = @import("./ttf/Font.zig");
 const glyf = @import("./ttf/tables/glyf.zig");
 const stroke = @import("./text_renderer/stroke.zig");
 
+const FPoint = sdl.rect.FPoint;
+
 fn midpoint_i16(a: i16, b: i16) i16 {
     return @intCast(@divTrunc((@as(i32, a) + @as(i32, b)), 2));
 }
 
+// A temporary format that's easier to consume
 const GlyphPoint = struct {
     x: f32,
     y: f32,
     on_curve: bool,
 };
 
-/// Normalize all the points on a contour to a format that's easier to consume.
-/// Additionally, this helps with some of the subtleties of TTF fonts:
+/// Normalize all points on a contour from their compressed format to
+/// a fully expanded list of points, including converting the curves to
+/// a list of lines.
+/// Additionally, this resolves some of the subtleties of TTF fonts:
 /// - Ensure first point is on_curve
 /// - Ensure last point is on_curve and matches the first point
 /// - Expand consecutive off_curve points so that it has a real on_curve point between them
-fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]GlyphPoint {
+fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]FPoint {
     var points = try std.ArrayList(GlyphPoint).initCapacity(allocator, flags.len);
+    defer points.deinit();
 
     //Handle instance where the first value is a curve
     if (flags[0].on_curve == 0) {
@@ -86,21 +92,45 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
         point.*.y += 1;
     }
 
-    return points.toOwnedSlice();
+    return contourToLinePoints(allocator, points.items);
 }
 
-fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
-    for (0..points.len - 1) |i| {
-        const point = points[i];
-        const next_point = points[i + 1];
+pub fn expandBezier(points: *Points, start: FPoint, control: FPoint, end: FPoint) !void {
+    // Calculate approximate curve length to determine step count
+    const d1x = control.x - start.x;
+    const d1y = control.y - start.y;
+    const d2x = end.x - control.x;
+    const d2y = end.y - control.y;
+    const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
+    const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length * 2))));
+
+    for (0..steps) |i| {
+        const t = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(steps - 1));
+        const inv_t = 1.0 - t;
+
+        // Quadratic Bézier formula: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
+        const x = inv_t * inv_t * start.x +
+            2.0 * inv_t * t * control.x +
+            t * t * end.x;
+        const y = inv_t * inv_t * start.y +
+            2.0 * inv_t * t * control.y +
+            t * t * end.y;
+
+        try points.append(FPoint{ .x = x, .y = y });
+    }
+}
+
+const Points = std.ArrayList(FPoint);
+fn contourToLinePoints(allocator: std.mem.Allocator, glyph_points: []GlyphPoint) ![]FPoint {
+    var line_points = Points.init(allocator);
+
+    for (0..glyph_points.len - 1) |i| {
+        const point = glyph_points[i];
+        const next_point = glyph_points[i + 1];
 
         //Draw straight line
         if (point.on_curve and next_point.on_curve) {
-            try stroke.drawLine(
-                surface,
-                sdl.rect.FPoint{ .x = point.x, .y = point.y },
-                sdl.rect.FPoint{ .x = next_point.x, .y = next_point.y },
-            );
+            try line_points.append(FPoint{ .x = point.x, .y = point.y });
             continue;
         }
 
@@ -111,12 +141,12 @@ fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
 
         //Draw curve
         if (!point.on_curve and next_point.on_curve) {
-            const prev_point = points[i - 1];
-            try stroke.drawBezier(
-                surface,
-                sdl.rect.FPoint{ .x = prev_point.x, .y = prev_point.y },
-                sdl.rect.FPoint{ .x = point.x, .y = point.y },
-                sdl.rect.FPoint{ .x = next_point.x, .y = next_point.y },
+            const prev_point = glyph_points[i - 1];
+            try expandBezier(
+                &line_points,
+                FPoint{ .x = prev_point.x, .y = prev_point.y },
+                FPoint{ .x = point.x, .y = point.y },
+                FPoint{ .x = next_point.x, .y = next_point.y },
             );
             continue;
         }
@@ -125,6 +155,24 @@ fn renderContour(surface: sdl.surface.Surface, points: []GlyphPoint) !void {
         std.debug.print("Unexpected point on_curve {any} ({d}, {d})\n", .{ point.on_curve, point.x, point.y });
         std.debug.print("Next point on_curve {any} ({d}, {d})\n", .{ next_point.on_curve, next_point.x, next_point.y });
         unreachable;
+    }
+
+    //The final point for a straight needs to be added. Bezier is already handled
+    const last_point = glyph_points[glyph_points.len - 1];
+    if (last_point.on_curve) {
+        try line_points.append(FPoint{ .x = last_point.x, .y = last_point.y });
+    }
+
+    return line_points.toOwnedSlice();
+}
+
+fn fillPoints(surface: sdl.surface.Surface, contours: [][]FPoint) !void {
+    for (contours) |points| {
+        for (0..points.len - 1) |i| {
+            const point = points[i];
+            const next_point = points[i + 1];
+            try stroke.drawLine(surface, point, next_point);
+        }
     }
 }
 
@@ -157,20 +205,28 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
     );
     std.debug.print("Surface: {d} {d}\n", .{ surface.getWidth(), surface.getHeight() });
 
+    const contours = try allocator.alloc([]FPoint, glyph.contour_end_points.len);
+    defer {
+        for (contours) |contour| allocator.free(contour);
+        allocator.free(contours);
+    }
+
     var start: usize = 0;
-    for (glyph.contour_end_points) |_end| {
+    for (glyph.contour_end_points, 0..) |_end, i| {
         const end: usize = @intCast(_end);
         const flags = glyph.flags[start .. end + 1];
         const x_coords = glyph.x_coordinate[start .. end + 1];
         const y_coords = glyph.y_coordinate[start .. end + 1];
 
+        std.debug.print("Expanding contour {d}-{d}\n", .{ start, end });
         const points = try normalize(allocator, glyph_properties, flags, x_coords, y_coords);
-        defer allocator.free(points);
+        contours[i] = points;
 
-        std.debug.print("Rendering contour {d}-{d}\n", .{ start, end });
-        try renderContour(surface, points);
         start = end + 1;
     }
+
+    std.debug.print("Drawing {} contours\n", .{contours.len});
+    try fillPoints(surface, contours);
 
     return surface;
 }
