@@ -47,7 +47,7 @@ fn rayIntersects(ray_origin: FPoint, line_from: FPoint, line_to: FPoint) bool {
     const max_y = @max(line_from.y, line_to.y);
 
     // Ray doesn't cross the segment's Y range
-    if (ray_origin.y < min_y or ray_origin.y > max_y) return false;
+    if (ray_origin.y < min_y or ray_origin.y >= max_y) return false;
 
     // Calculate X intersection point
     const t = (ray_origin.y - line_from.y) / (line_to.y - line_from.y);

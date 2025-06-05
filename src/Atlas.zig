@@ -87,10 +87,6 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
         point.*.y = glyph_properties.max_y - point.*.y;
         point.*.x *= glyph_properties.scale;
         point.*.y *= glyph_properties.scale;
-
-        //Add a 1 pixel border so that anti-aliasing can be applied to the edges of the glyph
-        point.*.x += 1;
-        point.*.y += 1;
     }
 
     return contourToLinePoints(allocator, points.items);
@@ -98,14 +94,16 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
 
 pub fn expandBezier(points: *Points, start: FPoint, control: FPoint, end: FPoint) !void {
     // Calculate approximate curve length to determine step count
-    const d1x = control.x - start.x;
-    const d1y = control.y - start.y;
-    const d2x = end.x - control.x;
-    const d2y = end.y - control.y;
-    const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
-    const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length * 2))));
+    // const d1x = control.x - start.x;
+    // const d1y = control.y - start.y;
+    // const d2x = end.x - control.x;
+    // const d2y = end.y - control.y;
+    // const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
+    // const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length * 2))));
+    const steps: usize = 20; // this should be the absolute max iterations, i can barely percieve 10 at 800pt
 
-    for (0..steps) |i| {
+    //Do not add the last step, it will get added later
+    for (0..steps - 1) |i| {
         const t = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(steps - 1));
         const inv_t = 1.0 - t;
 
@@ -190,8 +188,8 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
     const max_x_offset: f32 = @floatFromInt(glyph.x_max + glyph_properties.offset_x);
     const max_y_offset: f32 = @floatFromInt(glyph.y_max + glyph_properties.offset_y);
     const surface = try sdl.surface.Surface.init(
-        @intFromFloat(@ceil(max_x_offset * scale) + 2),
-        @intFromFloat(@ceil(max_y_offset * scale) + 2),
+        @intFromFloat(@ceil(max_x_offset * scale)),
+        @intFromFloat(@ceil(max_y_offset * scale)),
         sdl.pixels.Format.array_rgb_24,
     );
     std.debug.print("Surface: {d} {d}\n", .{ surface.getWidth(), surface.getHeight() });
@@ -217,6 +215,9 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
     }
 
     std.debug.print("Drawing {} contours\n", .{contours.len});
+    for (contours) |contour| {
+        std.debug.print("Contour points {d}\n", .{contour.len});
+    }
     try fill.fillOutline(surface, contours);
 
     return surface;
