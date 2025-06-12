@@ -101,7 +101,6 @@ fn contourIntersectsPixel(pixel: FPoint, contours: [][]FPoint) !f32 {
 
             //Edge case where last element intersects, we need to loop back to the beginning to find exit intersect
             if (i == points.len - 2 and intersect_points.items.len > 0) {
-                std.debug.print("Last intersect, looping\n", .{});
                 i = -1;
             }
         }
@@ -189,9 +188,9 @@ fn polygonCenter(points: []FPoint) FPoint {
 
 fn polygonArea(points: []FPoint) f32 {
     var sum: f32 = 0;
-    for (0..points.len - 1) |i| {
+    for (0..points.len) |i| {
         const point = points[i];
-        const next_point = points[i + 1];
+        const next_point = points[(i + 1) % points.len];
         sum += (point.x * next_point.y) - (next_point.x * point.y);
     }
     return @abs(sum) / 2;
