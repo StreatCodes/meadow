@@ -28,6 +28,9 @@ pub fn main() !void {
     const font = try Font.parse(allocator, reader);
     defer font.deinit(allocator);
 
+    const atlas = Atlas.init(allocator, font);
+    atlas.deinit();
+
     defer sdl.init.shutdown();
 
     const init_flags = sdl.init.Flags{ .video = true };
@@ -40,11 +43,7 @@ pub fn main() !void {
     const surface = try window.getSurface();
     try surface.fillRect(null, surface.mapRgb(50, 50, 50));
 
-    const glyph = font.map_character('@');
-
-    const glyph_surface = try Atlas.renderGylph(allocator, glyph, font.head_table.units_per_em, 100);
-    defer glyph_surface.deinit();
-    try glyph_surface.blit(null, surface, sdl.rect.IPoint{ .x = 10, .y = 10 });
+    try atlas.render(surface, .{ .x = 10, .y = 10 }, "Hello, world", 100);
 
     try window.updateSurface();
     while (true) {

@@ -5,6 +5,21 @@ const glyf = @import("./ttf/tables/glyf.zig");
 const fill = @import("./text_renderer/fill.zig");
 
 const FPoint = sdl.rect.FPoint;
+const Atlas = @This();
+
+allocator: std.mem.Allocator,
+font: Font,
+
+pub fn init(allocator: std.mem.Allocator, font: Font) Atlas {
+    return Atlas{
+        .allocator = allocator,
+        .font = font,
+    };
+}
+
+pub fn deinit(self: Atlas) void {
+    _ = self;
+}
 
 fn midpoint_i16(a: i16, b: i16) i16 {
     return @intCast(@divTrunc((@as(i32, a) + @as(i32, b)), 2));
@@ -24,10 +39,8 @@ const GlyphPoint = struct {
 /// - Ensure first point is on_curve
 /// - Ensure last point is on_curve and matches the first point
 /// - Expand consecutive off_curve points so that it has a real on_curve point between them
-/// TODO i think this function belongs in the TTF parser, not here. (minus contourToLinePoints)
-fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]FPoint {
+fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]GlyphPoint {
     var points = try std.ArrayList(GlyphPoint).initCapacity(allocator, flags.len);
-    defer points.deinit();
 
     //Handle instance where the first value is a curve
     if (flags[0].on_curve == 0) {
@@ -89,7 +102,7 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
         point.*.y *= glyph_properties.scale;
     }
 
-    return contourToLinePoints(allocator, points.items);
+    return points.toOwnedSlice();
 }
 
 pub fn expandBezier(points: *Points, start: FPoint, control: FPoint, end: FPoint) !void {
@@ -173,9 +186,9 @@ const GlyphProperties = struct {
 };
 
 /// Render a glyph to a new surface. It is the callers responsibility to destroy the returned surface.
-pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_em: u116, point_size: f32) !sdl.surface.Surface {
+fn renderSimpleGylph(self: Atlas, _glyph: glyf.Glyph, point_size: f32) !sdl.surface.Surface {
+    const units_per_em = self.font.head_table.units_per_em;
     const scale = point_size / @as(f32, @floatFromInt(units_per_em));
-    std.debug.print("Rendering glyph {d}pt (scale {d})\n", .{ point_size, scale });
 
     const glyph = _glyph.simple; //TODO remove this eventually
     const glyph_properties = GlyphProperties{
@@ -194,10 +207,10 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
     );
     std.debug.print("Surface: {d} {d}\n", .{ surface.getWidth(), surface.getHeight() });
 
-    const contours = try allocator.alloc([]FPoint, glyph.contour_end_points.len);
+    const contours = try self.allocator.alloc([]FPoint, glyph.contour_end_points.len);
     defer {
-        for (contours) |contour| allocator.free(contour);
-        allocator.free(contours);
+        for (contours) |contour| self.allocator.free(contour);
+        self.allocator.free(contours);
     }
 
     var start: usize = 0;
@@ -208,7 +221,10 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
         const y_coords = glyph.y_coordinate[start .. end + 1];
 
         std.debug.print("Expanding contour {d}-{d}\n", .{ start, end });
-        const points = try normalize(allocator, glyph_properties, flags, x_coords, y_coords);
+        const _points = try normalize(self.allocator, glyph_properties, flags, x_coords, y_coords);
+        defer self.allocator.free(_points);
+
+        const points = try contourToLinePoints(self.allocator, _points);
         contours[i] = points;
 
         start = end + 1;
@@ -221,4 +237,20 @@ pub fn renderGylph(allocator: std.mem.Allocator, _glyph: glyf.Glyph, units_per_e
     try fill.fillOutline(surface, contours);
 
     return surface;
+}
+
+pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, point_size: f32) !void {
+    var x_dest = dest_point.x;
+    for (text) |c| {
+        const glyph = self.font.map_character(c);
+        const surface = switch (glyph) {
+            .simple => try self.renderSimpleGylph(glyph, point_size),
+            .compound => try sdl.surface.Surface.init(10, 20, sdl.pixels.Format.array_rgb_24),
+            .empty => try sdl.surface.Surface.init(10, 20, sdl.pixels.Format.array_rgb_24),
+        };
+        defer surface.deinit(); //TODO cache on the atlas
+
+        try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = x_dest, .y = dest_point.y });
+        x_dest += @intCast(surface.getWidth());
+    }
 }
