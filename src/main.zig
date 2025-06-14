@@ -40,8 +40,10 @@ pub fn main() !void {
     const surface = try window.getSurface();
     try surface.fillRect(null, surface.mapRgb(50, 50, 50));
 
-    const glyph = font.glyf_table.glyphs[9];
-    const glyph_surface = try Atlas.renderGylph(allocator, glyph, font.head_table.units_per_em, 400);
+    const glyph_id = font.cmap_table.map_character('@');
+    const glyph = font.glyf_table.glyphs[glyph_id];
+
+    const glyph_surface = try Atlas.renderGylph(allocator, glyph, font.head_table.units_per_em, 100);
     defer glyph_surface.deinit();
     try glyph_surface.blit(null, surface, sdl.rect.IPoint{ .x = 10, .y = 10 });
 
@@ -50,6 +52,9 @@ pub fn main() !void {
         switch ((try sdl.events.wait(true)).?) {
             .quit => break,
             .terminating => break,
+            .key_down => |key| {
+                _ = key;
+            },
             else => {},
         }
     }

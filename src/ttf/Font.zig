@@ -4,6 +4,7 @@ const HeadTable = @import("./tables/head.zig").HeadTable;
 const MaxpTable = @import("./tables/maxp.zig").MaxpTable;
 const LocaTable = @import("./tables/loca.zig").LocaTable;
 const GlyfTable = @import("./tables/glyf.zig").GlyfTable;
+const CMapTable = @import("./tables/cmap.zig").CMapTable;
 
 const TableDirectory = headers.TableDirectory;
 const OffsetTable = headers.OffsetTable;
@@ -13,6 +14,7 @@ head_table: HeadTable,
 loca_table: LocaTable,
 maxp_table: MaxpTable,
 glyf_table: GlyfTable,
+cmap_table: CMapTable,
 
 fn getTableData(directory: []TableDirectory, table_data: []u8, tag: []const u8) []u8 {
     const headers_length = @sizeOf(OffsetTable) + (@sizeOf(TableDirectory) * directory.len);
@@ -74,15 +76,22 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
     const glyf_table = try GlyfTable.parse(allocator, glyf_data, loca_table.offsets);
     std.debug.print("Glyphs: {d}\n", .{glyf_table.glyphs.len});
 
+    const cmap_data = getTableData(table_directories, table_data, "cmap");
+    var cmap_stream = std.io.fixedBufferStream(cmap_data);
+    const cmap_reader = cmap_stream.reader().any();
+    const cmap_table = try CMapTable.parse(allocator, cmap_reader);
+
     return Font{
         .head_table = head_table,
         .loca_table = loca_table,
         .maxp_table = maxp_table,
         .glyf_table = glyf_table,
+        .cmap_table = cmap_table,
     };
 }
 
 pub fn deinit(font: Font, allocator: std.mem.Allocator) void {
     defer font.glyf_table.deinit(allocator);
     defer font.loca_table.deinit(allocator);
+    defer font.cmap_table.deinit(allocator);
 }
