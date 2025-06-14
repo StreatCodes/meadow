@@ -40,8 +40,7 @@ pub fn main() !void {
     const surface = try window.getSurface();
     try surface.fillRect(null, surface.mapRgb(50, 50, 50));
 
-    const glyph_id = font.cmap_table.map_character('@');
-    const glyph = font.glyf_table.glyphs[glyph_id];
+    const glyph = font.map_character('@');
 
     const glyph_surface = try Atlas.renderGylph(allocator, glyph, font.head_table.units_per_em, 100);
     defer glyph_surface.deinit();

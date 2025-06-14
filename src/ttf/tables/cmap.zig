@@ -132,33 +132,4 @@ pub const CMapTable = struct {
     pub fn deinit(self: CMapTable, allocator: std.mem.Allocator) void {
         self.unicode_table.deinit(allocator);
     }
-
-    /// Maps the given unicode character code to the index of the glyph
-    pub fn map_character(self: CMapTable, char_code: u16) usize {
-        var segment: usize = undefined;
-        for (0..self.unicode_table.end_code.len) |i| {
-            if (char_code <= self.unicode_table.end_code[i]) {
-                segment = i;
-                break;
-            }
-        }
-
-        //No glyph for character code
-        if (char_code < self.unicode_table.start_code[segment]) {
-            return 0;
-        }
-
-        const u16_modulo = 65536; // u16 max + 1
-        if (self.unicode_table.id_range_offset[segment] == 0) {
-            const result: usize = @as(usize, @intCast(char_code)) + @as(usize, @intCast(self.unicode_table.id_delta[segment]));
-            return result % u16_modulo;
-        }
-
-        const index = self.unicode_table.id_range_offset[segment] / 2 + (char_code - self.unicode_table.start_code[segment]) + segment;
-        const glyph_id = self.unicode_table.glyph_index_array[index];
-        if (glyph_id == 0) return glyph_id;
-
-        const result: usize = @as(usize, @intCast(glyph_id)) + @as(usize, @intCast(self.unicode_table.id_delta[segment]));
-        return result % u16_modulo;
-    }
 };
