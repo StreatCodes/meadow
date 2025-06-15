@@ -15,7 +15,7 @@ pub fn fillOutline(surface: sdl.surface.Surface, contours: [][]FPoint) !void {
             const brightness = try contourIntersectsPixel(pixel, contours);
             if (brightness > 0) {
                 const color: u8 = @intFromFloat(@ceil(255 * brightness));
-                try surface.writePixel(x, y, sdl.pixels.Color{ .r = color, .g = color, .b = color, .a = 255 });
+                try surface.writePixel(x, y, sdl.pixels.Color{ .r = 255, .g = 255, .b = 255, .a = color });
                 continue;
             }
 

@@ -43,7 +43,8 @@ pub fn main() !void {
     const surface = try window.getSurface();
     try surface.fillRect(null, surface.mapRgb(50, 50, 50));
 
-    try atlas.render(surface, .{ .x = 10, .y = 10 }, "Hello, world", 100);
+    try atlas.render(surface, .{ .x = 10, .y = 100 }, "Hello, world", 100);
+    // try surface.fillRect(.{ .x = 10, .y = 100, .h = 1, .w = 600 }, surface.mapRgb(255, 50, 255));
 
     try window.updateSurface();
     while (true) {

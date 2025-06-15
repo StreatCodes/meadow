@@ -5,6 +5,7 @@ const MaxpTable = @import("./tables/maxp.zig").MaxpTable;
 const LocaTable = @import("./tables/loca.zig").LocaTable;
 const GlyfTable = @import("./tables/glyf.zig").GlyfTable;
 const CMapTable = @import("./tables/cmap.zig").CMapTable;
+const HheaTable = @import("./tables/hhea.zig").HheaTable;
 
 const Glyph = @import("./tables/glyf.zig").Glyph;
 const TableDirectory = headers.TableDirectory;
@@ -16,6 +17,7 @@ loca_table: LocaTable,
 maxp_table: MaxpTable,
 glyf_table: GlyfTable,
 cmap_table: CMapTable,
+hhea_table: HheaTable,
 
 fn getTableData(directory: []TableDirectory, table_data: []u8, tag: []const u8) []u8 {
     const headers_length = @sizeOf(OffsetTable) + (@sizeOf(TableDirectory) * directory.len);
@@ -82,12 +84,18 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
     const cmap_reader = cmap_stream.reader().any();
     const cmap_table = try CMapTable.parse(allocator, cmap_reader);
 
+    const hhea_data = getTableData(table_directories, table_data, "hhea");
+    var hhea_stream = std.io.fixedBufferStream(hhea_data);
+    const hhea_reader = hhea_stream.reader().any();
+    const hhea_table = try HheaTable.parse(hhea_reader);
+
     return Font{
         .head_table = head_table,
         .loca_table = loca_table,
         .maxp_table = maxp_table,
         .glyf_table = glyf_table,
         .cmap_table = cmap_table,
+        .hhea_table = hhea_table,
     };
 }
 

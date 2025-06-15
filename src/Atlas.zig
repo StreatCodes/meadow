@@ -186,11 +186,7 @@ const GlyphProperties = struct {
 };
 
 /// Render a glyph to a new surface. It is the callers responsibility to destroy the returned surface.
-fn renderSimpleGylph(self: Atlas, _glyph: glyf.Glyph, point_size: f32) !sdl.surface.Surface {
-    const units_per_em = self.font.head_table.units_per_em;
-    const scale = point_size / @as(f32, @floatFromInt(units_per_em));
-
-    const glyph = _glyph.simple; //TODO remove this eventually
+fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surface.Surface {
     const glyph_properties = GlyphProperties{
         .offset_x = -glyph.x_min,
         .offset_y = -glyph.y_min,
@@ -203,7 +199,7 @@ fn renderSimpleGylph(self: Atlas, _glyph: glyf.Glyph, point_size: f32) !sdl.surf
     const surface = try sdl.surface.Surface.init(
         @intFromFloat(@ceil(max_x_offset * scale)),
         @intFromFloat(@ceil(max_y_offset * scale)),
-        sdl.pixels.Format.array_rgb_24,
+        sdl.pixels.Format.array_rgba_32,
     );
     std.debug.print("Surface: {d} {d}\n", .{ surface.getWidth(), surface.getHeight() });
 
@@ -240,17 +236,27 @@ fn renderSimpleGylph(self: Atlas, _glyph: glyf.Glyph, point_size: f32) !sdl.surf
 }
 
 pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, point_size: f32) !void {
-    var x_dest = dest_point.x;
-    for (text) |c| {
-        const glyph = self.font.map_character(c);
-        const surface = switch (glyph) {
-            .simple => try self.renderSimpleGylph(glyph, point_size),
-            .compound => try sdl.surface.Surface.init(10, 20, sdl.pixels.Format.array_rgb_24),
-            .empty => try sdl.surface.Surface.init(10, 20, sdl.pixels.Format.array_rgb_24),
-        };
-        defer surface.deinit(); //TODO cache on the atlas
+    const units_per_em = self.font.head_table.units_per_em;
+    const scale = point_size / @as(f32, @floatFromInt(units_per_em));
 
-        try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = x_dest, .y = dest_point.y });
-        x_dest += @intCast(surface.getWidth());
+    var cursor = dest_point.x;
+    for (text) |c| {
+        const _glyph = self.font.map_character(c);
+        switch (_glyph) {
+            .simple => |glyph| {
+                std.debug.print("remove offset {d},{d}\n", .{ glyph.x_min, glyph.y_min });
+                const surface = try self.renderSimpleGylph(glyph, scale);
+                defer surface.deinit(); //TODO cache on the atlas
+
+                const x_dest = cursor;
+                const y_offset: i32 = @intFromFloat(@as(f32, @floatFromInt(glyph.y_min)) * scale);
+                const y_dest = dest_point.y - @as(i32, @intCast(surface.getHeight())) - y_offset;
+
+                try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = x_dest, .y = y_dest });
+                cursor += @intCast(surface.getWidth());
+            },
+            .compound => unreachable,
+            .empty => cursor += 18,
+        }
     }
 }
