@@ -39,7 +39,7 @@ const GlyphPoint = struct {
 /// - Ensure first point is on_curve
 /// - Ensure last point is on_curve and matches the first point
 /// - Expand consecutive off_curve points so that it has a real on_curve point between them
-fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, flags: []glyf.GlyphFlag, x_coords: []i16, y_coords: []i16) ![]GlyphPoint {
+fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, flags: []glyf.SimpleGlyphFlag, x_coords: []i16, y_coords: []i16) ![]GlyphPoint {
     var points = try std.ArrayList(GlyphPoint).initCapacity(allocator, flags.len);
 
     //Handle instance where the first value is a curve

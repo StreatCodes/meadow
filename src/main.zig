@@ -6,6 +6,15 @@ const Atlas = @import("./Atlas.zig");
 const SCREEN_WIDTH = 1280;
 const SCREEN_HEIGHT = 720;
 
+const text =
+    \\"So you're going to go through with it, then," Gandalf the Wizard said 
+    \\slowly.
+    \\"I am," Bilbo replied. "I've been planning this for a long time. 
+    \\It'll give the Hobbits of the Shire something to talk about for the next 
+    \\nine days - or ninety-nine, more likely. Anyway, at least I'll have my little joke."
+    \\"Who will laugh, I wonder?" Gandalf mused aloud, scratching his beard idly.
+;
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -43,7 +52,7 @@ pub fn main() !void {
     const surface = try window.getSurface();
     try surface.fillRect(null, surface.mapRgb(50, 50, 50));
 
-    try atlas.render(surface, .{ .x = 10, .y = 100 }, "Hello, world", 100);
+    try atlas.render(surface, .{ .x = 10, .y = 100 }, "a", 100);
     // try surface.fillRect(.{ .x = 10, .y = 100, .h = 1, .w = 600 }, surface.mapRgb(255, 50, 255));
 
     try window.updateSurface();

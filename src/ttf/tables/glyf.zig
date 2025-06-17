@@ -7,7 +7,7 @@ pub const Glyph = union(GlyphType) {
     empty: void,
 };
 
-pub const GlyphFlag = packed struct {
+pub const SimpleGlyphFlag = packed struct {
     on_curve: u1, // If set, the point is on the curve; Otherwise, it is off the curve.
     x_short_vector: u1, // If set, the corresponding x-coordinate is 1 byte long; Otherwise, the corresponding x-coordinate is 2 bytes long
     y_short_vector: u1, // If set, the corresponding y-coordinate is 1 byte long; Otherwise, the corresponding y-coordinate is 2 bytes long
@@ -35,7 +35,7 @@ pub const SimpleGlyph = struct {
     contour_end_points: []u16,
     instructions: []u8,
 
-    flags: []GlyphFlag,
+    flags: []SimpleGlyphFlag,
     x_coordinate: []i16,
     y_coordinate: []i16,
 
@@ -60,12 +60,12 @@ pub const SimpleGlyph = struct {
         const coordinate_count = last_end_point + 1;
 
         // Read flags
-        glyph.flags = try allocator.alloc(GlyphFlag, coordinate_count);
+        glyph.flags = try allocator.alloc(SimpleGlyphFlag, coordinate_count);
         var i: usize = 0;
         while (i < coordinate_count) : (i += 1) {
             var data: [1]u8 = undefined;
             _ = try reader.readAll(&data);
-            const value = std.mem.bytesToValue(GlyphFlag, &data);
+            const value = std.mem.bytesToValue(SimpleGlyphFlag, &data);
             // if (value.padding != 0) unreachable;
             glyph.flags[i] = value;
             if (value.repeat == 1) {
@@ -127,7 +127,92 @@ pub const SimpleGlyph = struct {
     }
 };
 
-const CompoundGlyph = struct {};
+const CompoundGlyphTransformation = struct {
+    xscale: f32,
+    yscale: f32,
+    scale01: f32,
+    scale10: f32,
+};
+
+const CompoundGlyphFlags = packed struct {
+    args_are_words: u1, //If set, the arguments are words; If not set, they are bytes.
+    args_are_xy_values: u1, //If set, the arguments are xy values; If not set, they are points.
+    round_xy: u1, //If set, round the xy values to grid; if not set do not round xy values to grid (relevant only to bit 1 is set)
+    is_scaled: u1, //If set, there is a simple scale for the component. If not set, scale is 1.0.
+    obsolete: u1, //obsolete; set to zero
+    more_components: u1, //If set, at least one additional glyph follows this one.
+    we_have_an_x_and_y_scale: u1, //If set the x direction will use a different scale than the y direction.
+    we_have_a_two_by_two: u1, //If set there is a 2-by-2 transformation that will be used to scale the component.
+    we_have_instructions: u1, //If set, instructions for the component character follow the last component.
+    use_my_metrics: u1, //Use metrics from this component for the compound glyph.
+    overlap_compound: u1, //If set, the components of this compound glyph overlap.
+    padding: u5,
+};
+
+const CompoundGlyphComponent = struct {
+    flags: CompoundGlyphFlags,
+    glyph_index: u16,
+    arg1: i32,
+    arg2: i32,
+
+    pub fn parse(reader: std.io.AnyReader) !CompoundGlyphComponent {
+        var component: CompoundGlyphComponent = undefined;
+        var data: [2]u8 = undefined;
+        _ = try reader.readAll(&data);
+        const flags = std.mem.bytesToValue(CompoundGlyphFlags, &data);
+
+        component.flags = flags;
+        component.glyph_index = try reader.readInt(u16, .big);
+
+        if (flags.args_are_words == 1 and flags.args_are_xy_values == 1) {
+            component.arg1 = @intCast(try reader.readInt(i16, .big));
+            component.arg2 = @intCast(try reader.readInt(i16, .big));
+        } else if (flags.args_are_words == 0 and flags.args_are_xy_values == 1) {
+            component.arg1 = @intCast(try reader.readInt(i8, .big));
+            component.arg2 = @intCast(try reader.readInt(i8, .big));
+        } else if (flags.args_are_words == 1 and flags.args_are_xy_values == 0) {
+            component.arg1 = @intCast(try reader.readInt(u16, .big));
+            component.arg2 = @intCast(try reader.readInt(u16, .big));
+        } else {
+            component.arg1 = @intCast(try reader.readInt(u8, .big));
+            component.arg2 = @intCast(try reader.readInt(u8, .big));
+        }
+
+        return component;
+    }
+};
+
+const CompoundGlyph = struct {
+    x_min: i16, // Minimum x for coordinate data
+    y_min: i16, // Minimum y for coordinate data
+    x_max: i16, // Maximum x for coordinate data
+    y_max: i16, // Maximum y for coordinate data
+
+    components: []CompoundGlyphComponent,
+
+    pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !CompoundGlyph {
+        var glyph: CompoundGlyph = undefined;
+
+        glyph.x_min = try reader.readInt(i16, .big);
+        glyph.y_min = try reader.readInt(i16, .big);
+        glyph.x_max = try reader.readInt(i16, .big);
+        glyph.y_max = try reader.readInt(i16, .big);
+
+        var components = std.ArrayList(CompoundGlyphComponent).init(allocator);
+        while (true) {
+            const component = try CompoundGlyphComponent.parse(reader);
+            try components.append(component);
+            if (component.flags.more_components == 0) break;
+        }
+        glyph.components = try components.toOwnedSlice();
+
+        return glyph;
+    }
+
+    pub fn deinit(self: CompoundGlyph, allocator: std.mem.Allocator) void {
+        allocator.free(self.components);
+    }
+};
 
 pub const GlyfTable = struct {
     glyphs: []Glyph,
@@ -150,9 +235,8 @@ pub const GlyfTable = struct {
 
             const contour_count = try reader.readInt(i16, .big);
             if (contour_count < 0) {
-                std.debug.print("Warning skipping compound glyph ({d}) TODO\n", .{i});
-                try glyphs.append(Glyph{ .compound = CompoundGlyph{} });
-                continue;
+                const glyph = try CompoundGlyph.parse(allocator, reader);
+                try glyphs.append(Glyph{ .compound = glyph });
             } else {
                 const glyph = try SimpleGlyph.parse(allocator, reader, @intCast(contour_count));
                 try glyphs.append(Glyph{ .simple = glyph });
@@ -166,7 +250,7 @@ pub const GlyfTable = struct {
         for (self.glyphs) |entry| {
             switch (entry) {
                 .simple => |glyph| glyph.deinit(allocator),
-                .compound => {},
+                .compound => |glyph| glyph.deinit(allocator),
                 .empty => {},
             }
         }
