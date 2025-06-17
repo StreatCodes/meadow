@@ -235,11 +235,17 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
     return surface;
 }
 
-pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, point_size: f32) !void {
+const RenderFlags = struct {
+    max_width: ?usize = null,
+};
+
+pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, point_size: f32, flags: RenderFlags) !void {
     const units_per_em = self.font.head_table.units_per_em;
     const scale = point_size / @as(f32, @floatFromInt(units_per_em));
+    const hhea = self.font.hhea_table;
+    const lineHeight = @abs(@as(f32, @floatFromInt(hhea.ascent - hhea.descent + hhea.line_gap)) * scale);
 
-    var cursor = dest_point.x;
+    var cursor = dest_point;
     for (text) |c| {
         const _glyph = self.font.map_character(c);
         switch (_glyph) {
@@ -248,15 +254,25 @@ pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.re
                 const surface = try self.renderSimpleGylph(glyph, scale);
                 defer surface.deinit(); //TODO cache on the atlas
 
-                const x_dest = cursor;
-                const y_offset: i32 = @intFromFloat(@as(f32, @floatFromInt(glyph.y_min)) * scale);
-                const y_dest = dest_point.y - @as(i32, @intCast(surface.getHeight())) - y_offset;
+                //Check to see if we should move to a new line
+                if (flags.max_width) |max_width| {
+                    if (cursor.x + @as(i32, @intCast(surface.getWidth())) > max_width) {
+                        cursor.x = dest_point.x;
+                        cursor.y += @intFromFloat(@round(lineHeight));
+                    }
+                }
 
-                try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = x_dest, .y = y_dest });
-                cursor += @intCast(surface.getWidth());
+                const y_offset: i32 = @intFromFloat(@as(f32, @floatFromInt(glyph.y_min)) * scale);
+                const y_dest = cursor.y - @as(i32, @intCast(surface.getHeight())) - y_offset;
+
+                try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = cursor.x, .y = y_dest });
+                cursor.x += @intCast(surface.getWidth());
             },
-            .compound => unreachable,
-            .empty => cursor += 18,
+            .compound => {
+                std.debug.print("Failed to print compound character ({c})\n", .{c});
+                cursor.x += 18;
+            },
+            .empty => cursor.x += 18,
         }
     }
 }
