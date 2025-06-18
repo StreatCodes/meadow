@@ -5,20 +5,28 @@ const glyf = @import("./ttf/tables/glyf.zig");
 const fill = @import("./text_renderer/fill.zig");
 
 const FPoint = sdl.rect.FPoint;
+//TODO doesn't support u16, doesn't consider font-size
+const CharacterCache = std.AutoHashMap(u8, CharacterDescription);
 const Atlas = @This();
 
 allocator: std.mem.Allocator,
 font: Font,
+character_cache: CharacterCache,
 
 pub fn init(allocator: std.mem.Allocator, font: Font) Atlas {
     return Atlas{
         .allocator = allocator,
         .font = font,
+        .character_cache = CharacterCache.init(allocator),
     };
 }
 
-pub fn deinit(self: Atlas) void {
-    _ = self;
+pub fn deinit(self: *Atlas) void {
+    var char_iter = self.character_cache.iterator();
+    while (char_iter.next()) |char| {
+        if (char.value_ptr.surface) |surface| surface.deinit();
+    }
+    self.character_cache.deinit();
 }
 
 fn midpoint_i16(a: i16, b: i16) i16 {
@@ -216,7 +224,6 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
         const x_coords = glyph.x_coordinate[start .. end + 1];
         const y_coords = glyph.y_coordinate[start .. end + 1];
 
-        std.debug.print("Expanding contour {d}-{d}\n", .{ start, end });
         const _points = try normalize(self.allocator, glyph_properties, flags, x_coords, y_coords);
         defer self.allocator.free(_points);
 
@@ -226,7 +233,6 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
         start = end + 1;
     }
 
-    std.debug.print("Drawing {} contours\n", .{contours.len});
     for (contours) |contour| {
         std.debug.print("Contour points {d}\n", .{contour.len});
     }
@@ -235,45 +241,85 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
     return surface;
 }
 
+const CharacterDescription = struct {
+    surface: ?sdl.surface.Surface,
+    y_offset: i32,
+    width: i32,
+};
+
 const RenderFlags = struct {
     max_width: ?usize = null,
     point_size: f32 = 24,
 };
 
-pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, flags: RenderFlags) !void {
+pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, flags: RenderFlags) !void {
     const units_per_em = self.font.head_table.units_per_em;
     const scale = flags.point_size / @as(f32, @floatFromInt(units_per_em));
     const hhea = self.font.hhea_table;
     const line_height = @abs(@as(f32, @floatFromInt(hhea.ascent - hhea.descent + hhea.line_gap)) * scale);
 
+    var word_start: usize = 0;
     var cursor = dest_point;
-    for (text) |c| {
+    for (0..text.len) |i| {
+        const c = text[i];
         const _glyph = self.font.map_character(c);
-        switch (_glyph) {
+
+        // Cache all the details of the character, including the rendering
+        blk: switch (_glyph) {
             .simple => |glyph| {
-                std.debug.print("remove offset {d},{d}\n", .{ glyph.x_min, glyph.y_min });
+                if (self.character_cache.get(c) != null) break :blk;
                 const surface = try self.renderSimpleGylph(glyph, scale);
-                defer surface.deinit(); //TODO cache on the atlas
-
-                //Check to see if we should move to a new line
-                if (flags.max_width) |max_width| {
-                    if (cursor.x + @as(i32, @intCast(surface.getWidth())) > max_width) {
-                        cursor.x = dest_point.x;
-                        cursor.y += @intFromFloat(@round(line_height));
-                    }
-                }
-
-                const y_offset: i32 = @intFromFloat(@as(f32, @floatFromInt(glyph.y_min)) * scale);
-                const y_dest = cursor.y - @as(i32, @intCast(surface.getHeight())) - y_offset;
-
-                try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = cursor.x, .y = y_dest });
-                cursor.x += @intCast(surface.getWidth());
+                try self.character_cache.put(c, .{
+                    .surface = surface,
+                    .y_offset = @intFromFloat(@as(f32, @floatFromInt(glyph.y_min)) * scale),
+                    .width = @intCast(surface.getWidth()),
+                });
             },
             .compound => {
-                std.debug.print("Failed to print compound character ({c})\n", .{c});
-                cursor.x += 18;
+                std.debug.print("Ignoring compound character ({c})\n", .{c});
+                try self.character_cache.put(c, .{
+                    .surface = null,
+                    .y_offset = 0,
+                    .width = 18,
+                });
             },
-            .empty => cursor.x += 18,
+            .empty => {
+                try self.character_cache.put(c, .{
+                    .surface = null,
+                    .y_offset = 0,
+                    .width = 18,
+                });
+            },
+        }
+
+        // Once we encounter whitespace we can safely render a word without it overflowing the bounding box
+        if (c == '\n' or c == ' ') {
+            const word = text[word_start..i]; // TODO - 1?
+            var word_width: i32 = 0;
+
+            for (word) |wc| {
+                const char = self.character_cache.get(wc).?;
+                word_width += char.width;
+            }
+
+            if (flags.max_width) |max_width| {
+                if (cursor.x + word_width > max_width) {
+                    cursor.x = dest_point.x;
+                    cursor.y += @intFromFloat(@round(line_height));
+                }
+            }
+
+            for (word) |wc| {
+                const char = self.character_cache.get(wc).?;
+
+                if (char.surface) |surface| {
+                    const y_dest = cursor.y - @as(i32, @intCast(surface.getHeight())) - char.y_offset;
+                    try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = cursor.x, .y = y_dest });
+                }
+                cursor.x += char.width;
+            }
+
+            word_start = i; // i + 1?? TODO
         }
     }
 }

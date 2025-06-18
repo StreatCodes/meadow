@@ -37,8 +37,8 @@ pub fn main() !void {
     const font = try Font.parse(allocator, reader);
     defer font.deinit(allocator);
 
-    const atlas = Atlas.init(allocator, font);
-    atlas.deinit();
+    var atlas = Atlas.init(allocator, font);
+    defer atlas.deinit();
 
     defer sdl.init.shutdown();
 
