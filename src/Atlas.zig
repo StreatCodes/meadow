@@ -237,13 +237,14 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
 
 const RenderFlags = struct {
     max_width: ?usize = null,
+    point_size: f32 = 24,
 };
 
-pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, point_size: f32, flags: RenderFlags) !void {
+pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, flags: RenderFlags) !void {
     const units_per_em = self.font.head_table.units_per_em;
-    const scale = point_size / @as(f32, @floatFromInt(units_per_em));
+    const scale = flags.point_size / @as(f32, @floatFromInt(units_per_em));
     const hhea = self.font.hhea_table;
-    const lineHeight = @abs(@as(f32, @floatFromInt(hhea.ascent - hhea.descent + hhea.line_gap)) * scale);
+    const line_height = @abs(@as(f32, @floatFromInt(hhea.ascent - hhea.descent + hhea.line_gap)) * scale);
 
     var cursor = dest_point;
     for (text) |c| {
@@ -258,7 +259,7 @@ pub fn render(self: Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.re
                 if (flags.max_width) |max_width| {
                     if (cursor.x + @as(i32, @intCast(surface.getWidth())) > max_width) {
                         cursor.x = dest_point.x;
-                        cursor.y += @intFromFloat(@round(lineHeight));
+                        cursor.y += @intFromFloat(@round(line_height));
                     }
                 }
 

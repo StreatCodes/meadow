@@ -53,7 +53,12 @@ pub fn main() !void {
     try surface.fillRect(null, surface.mapRgb(50, 50, 50));
 
     // try atlas.render(surface, .{ .x = 10, .y = 100 }, "à", 100);
-    try atlas.render(surface, .{ .x = 10, .y = 100 }, text, 60, .{ .max_width = 1260 });
+    try atlas.render(
+        surface,
+        .{ .x = 10, .y = 100 },
+        text,
+        .{ .max_width = 1260, .point_size = 60 },
+    );
     // try surface.fillRect(.{ .x = 10, .y = 100, .h = 1, .w = 600 }, surface.mapRgb(255, 50, 255));
 
     try window.updateSurface();
