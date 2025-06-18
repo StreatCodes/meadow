@@ -5,8 +5,8 @@ const glyf = @import("./ttf/tables/glyf.zig");
 const fill = @import("./text_renderer/fill.zig");
 
 const FPoint = sdl.rect.FPoint;
-//TODO doesn't support u16, doesn't consider font-size
-const CharacterCache = std.AutoHashMap(u8, CharacterDescription);
+//TODO doesn't consider font-size
+const CharacterCache = std.AutoHashMap(u21, CharacterDescription);
 const Atlas = @This();
 
 allocator: std.mem.Allocator,
@@ -241,6 +241,18 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
     return surface;
 }
 
+fn textToCodePoints(allocator: std.mem.Allocator, text: []const u8) ![]u21 {
+    const codepoints = try allocator.alloc(u21, try std.unicode.utf8CountCodepoints(text));
+    var iter = std.unicode.Utf8Iterator{ .bytes = text, .i = 0 };
+    var i: usize = 0;
+    while (iter.nextCodepoint()) |codepoint| {
+        codepoints[i] = codepoint;
+        i += 1;
+    }
+
+    return codepoints;
+}
+
 const CharacterDescription = struct {
     surface: ?sdl.surface.Surface,
     y_offset: i32,
@@ -253,6 +265,9 @@ const RenderFlags = struct {
 };
 
 pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.rect.IPoint, text: []const u8, flags: RenderFlags) !void {
+    const codepoints = try textToCodePoints(self.allocator, text);
+    defer self.allocator.free(codepoints);
+
     const units_per_em = self.font.head_table.units_per_em;
     const scale = flags.point_size / @as(f32, @floatFromInt(units_per_em));
     const hhea = self.font.hhea_table;
@@ -260,8 +275,8 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
 
     var word_start: usize = 0;
     var cursor = dest_point;
-    for (0..text.len) |i| {
-        const c = text[i];
+    for (0..codepoints.len) |i| {
+        const c = codepoints[i];
         const _glyph = self.font.map_character(c);
 
         // Cache all the details of the character, including the rendering
@@ -276,7 +291,7 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
                 });
             },
             .compound => {
-                std.debug.print("Ignoring compound character ({c})\n", .{c});
+                std.debug.print("Ignoring compound character ({u})\n", .{c});
                 try self.character_cache.put(c, .{
                     .surface = null,
                     .y_offset = 0,
@@ -293,8 +308,10 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
         }
 
         // Once we encounter whitespace we can safely render a word without it overflowing the bounding box
-        if (c == '\n' or c == ' ') {
-            const word = text[word_start..i]; // TODO - 1?
+        const is_last = i == codepoints.len - 1;
+        if (c == '\n' or c == ' ' or is_last) {
+            const word_end = if (is_last) i + 1 else i;
+            const word = codepoints[word_start..word_end];
             var word_width: i32 = 0;
 
             for (word) |wc| {
@@ -319,7 +336,7 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
                 cursor.x += char.width;
             }
 
-            word_start = i; // i + 1?? TODO
+            word_start = i;
         }
     }
 }

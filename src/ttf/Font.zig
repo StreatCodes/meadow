@@ -106,7 +106,7 @@ pub fn deinit(font: Font, allocator: std.mem.Allocator) void {
 }
 
 /// Returns the glyph for the given unicode character
-pub fn map_character(self: Font, char_code: u16) Glyph {
+pub fn map_character(self: Font, char_code: u21) Glyph {
     const unicode_table = self.cmap_table.unicode_table;
     var segment: usize = undefined;
     for (0..unicode_table.end_code.len) |i| {
