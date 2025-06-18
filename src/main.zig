@@ -54,7 +54,7 @@ pub fn main() !void {
         surface,
         .{ .x = 10, .y = 100 },
         text,
-        .{ .max_width = 1260, .point_size = 50 },
+        .{ .max_width = 1260, .point_size = 36 },
     );
 
     try window.updateSurface();

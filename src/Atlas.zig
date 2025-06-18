@@ -115,13 +115,12 @@ fn normalize(allocator: std.mem.Allocator, glyph_properties: GlyphProperties, fl
 
 pub fn expandBezier(points: *Points, start: FPoint, control: FPoint, end: FPoint) !void {
     // Calculate approximate curve length to determine step count
-    // const d1x = control.x - start.x;
-    // const d1y = control.y - start.y;
-    // const d2x = end.x - control.x;
-    // const d2y = end.y - control.y;
-    // const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
-    // const steps = @max(10, @min(1000, @as(usize, @intFromFloat(approx_length * 2))));
-    const steps: usize = 20; // this should be the absolute max iterations, i can barely percieve 10 at 800pt
+    const d1x = control.x - start.x;
+    const d1y = control.y - start.y;
+    const d2x = end.x - control.x;
+    const d2y = end.y - control.y;
+    const approx_length = @sqrt(d1x * d1x + d1y * d1y) + @sqrt(d2x * d2x + d2y * d2y);
+    const steps = @max(3, @min(20, @as(usize, @intFromFloat(approx_length / 2))));
 
     //Do not add the last step, it will get added later
     for (0..steps - 1) |i| {
@@ -209,7 +208,6 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
         @intFromFloat(@ceil(max_y_offset * scale)),
         sdl.pixels.Format.array_rgba_32,
     );
-    std.debug.print("Surface: {d} {d}\n", .{ surface.getWidth(), surface.getHeight() });
 
     const contours = try self.allocator.alloc([]FPoint, glyph.contour_end_points.len);
     defer {
@@ -233,9 +231,6 @@ fn renderSimpleGylph(self: Atlas, glyph: glyf.SimpleGlyph, scale: f32) !sdl.surf
         start = end + 1;
     }
 
-    for (contours) |contour| {
-        std.debug.print("Contour points {d}\n", .{contour.len});
-    }
     try fill.fillOutline(surface, contours);
 
     return surface;
