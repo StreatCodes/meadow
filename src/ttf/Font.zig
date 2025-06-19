@@ -6,6 +6,7 @@ const LocaTable = @import("./tables/loca.zig").LocaTable;
 const GlyfTable = @import("./tables/glyf.zig").GlyfTable;
 const CMapTable = @import("./tables/cmap.zig").CMapTable;
 const HheaTable = @import("./tables/hhea.zig").HheaTable;
+const HmtxTable = @import("./tables/hmtx.zig").HmtxTable;
 
 const Glyph = @import("./tables/glyf.zig").Glyph;
 const TableDirectory = headers.TableDirectory;
@@ -18,6 +19,7 @@ maxp_table: MaxpTable,
 glyf_table: GlyfTable,
 cmap_table: CMapTable,
 hhea_table: HheaTable,
+hmtx_table: HmtxTable,
 
 fn getTableData(directory: []TableDirectory, table_data: []u8, tag: []const u8) []u8 {
     const headers_length = @sizeOf(OffsetTable) + (@sizeOf(TableDirectory) * directory.len);
@@ -89,6 +91,11 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
     const hhea_reader = hhea_stream.reader().any();
     const hhea_table = try HheaTable.parse(hhea_reader);
 
+    const hmtx_data = getTableData(table_directories, table_data, "hmtx");
+    var hmtx_stream = std.io.fixedBufferStream(hmtx_data);
+    const hmtx_reader = hmtx_stream.reader().any();
+    const hmtx_table = try HmtxTable.parse(allocator, hmtx_reader, hhea_table.num_of_long_hor_metrics, glyf_table.glyphs.len);
+
     return Font{
         .head_table = head_table,
         .loca_table = loca_table,
@@ -96,6 +103,7 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
         .glyf_table = glyf_table,
         .cmap_table = cmap_table,
         .hhea_table = hhea_table,
+        .hmtx_table = hmtx_table,
     };
 }
 
@@ -103,6 +111,7 @@ pub fn deinit(font: Font, allocator: std.mem.Allocator) void {
     defer font.glyf_table.deinit(allocator);
     defer font.loca_table.deinit(allocator);
     defer font.cmap_table.deinit(allocator);
+    defer font.hmtx_table.deinit(allocator);
 }
 
 /// Returns the glyph for the given unicode character
