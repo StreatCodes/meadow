@@ -248,9 +248,14 @@ fn textToCodePoints(allocator: std.mem.Allocator, text: []const u8) ![]u21 {
     return codepoints;
 }
 
+fn scaleAxis(comptime T: type, point: T, scale: f32) i32 {
+    return @intFromFloat(@as(f32, @floatFromInt(point)) * scale);
+}
+
 const CharacterDescription = struct {
     surface: ?sdl.surface.Surface,
     y_offset: i32,
+    x_offset: i32,
     width: i32,
 };
 
@@ -272,8 +277,11 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
     var cursor = dest_point;
     for (0..codepoints.len) |i| {
         const c = codepoints[i];
-        const _glyph = self.font.map_character(c);
+        const glyph_id = self.font.getGlyphId(c);
+        const _glyph = self.font.getGlyph(glyph_id);
+        const h_metric = self.font.hmtx_table.getGlyphSpacing(glyph_id);
 
+        //TODO this can be simplified
         // Cache all the details of the character, including the rendering
         blk: switch (_glyph) {
             .simple => |glyph| {
@@ -281,8 +289,9 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
                 const surface = try self.renderSimpleGylph(glyph, scale);
                 try self.character_cache.put(c, .{
                     .surface = surface,
-                    .y_offset = @intFromFloat(@as(f32, @floatFromInt(glyph.y_min)) * scale),
-                    .width = @intCast(surface.getWidth()),
+                    .y_offset = scaleAxis(i16, glyph.y_min, scale),
+                    .x_offset = scaleAxis(i16, h_metric.left_side_bearing, scale),
+                    .width = scaleAxis(u16, h_metric.advance_width, scale),
                 });
             },
             .compound => {
@@ -290,14 +299,16 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
                 try self.character_cache.put(c, .{
                     .surface = null,
                     .y_offset = 0,
-                    .width = 18,
+                    .x_offset = scaleAxis(i16, h_metric.left_side_bearing, scale),
+                    .width = scaleAxis(u16, h_metric.advance_width, scale),
                 });
             },
             .empty => {
                 try self.character_cache.put(c, .{
                     .surface = null,
                     .y_offset = 0,
-                    .width = 18,
+                    .x_offset = scaleAxis(i16, h_metric.left_side_bearing, scale),
+                    .width = scaleAxis(u16, h_metric.advance_width, scale),
                 });
             },
         }
@@ -326,7 +337,8 @@ pub fn render(self: *Atlas, dest_surface: sdl.surface.Surface, dest_point: sdl.r
 
                 if (char.surface) |surface| {
                     const y_dest = cursor.y - @as(i32, @intCast(surface.getHeight())) - char.y_offset;
-                    try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = cursor.x, .y = y_dest });
+                    const x_dest = cursor.x + char.x_offset;
+                    try surface.blit(null, dest_surface, sdl.rect.IPoint{ .x = x_dest, .y = y_dest });
                 }
                 cursor.x += char.width;
             }

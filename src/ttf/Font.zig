@@ -114,8 +114,8 @@ pub fn deinit(font: Font, allocator: std.mem.Allocator) void {
     defer font.hmtx_table.deinit(allocator);
 }
 
-/// Returns the glyph for the given unicode character
-pub fn map_character(self: Font, char_code: u21) Glyph {
+/// Returns the ID of the glyph for the given unicode character
+pub fn getGlyphId(self: Font, char_code: u21) usize {
     const unicode_table = self.cmap_table.unicode_table;
     var segment: usize = undefined;
     for (0..unicode_table.end_code.len) |i| {
@@ -127,21 +127,25 @@ pub fn map_character(self: Font, char_code: u21) Glyph {
 
     //No glyph for character code
     if (char_code < unicode_table.start_code[segment]) {
-        return self.glyf_table.glyphs[0];
+        return 0;
     }
 
     const u16_modulo = 65536; // u16 max + 1
     if (unicode_table.id_range_offset[segment] == 0) {
         const result: usize = @as(usize, @intCast(char_code)) + @as(usize, @intCast(unicode_table.id_delta[segment]));
-        return self.glyf_table.glyphs[result % u16_modulo];
+        return result % u16_modulo;
     }
 
     const index = unicode_table.id_range_offset[segment] / 2 + (char_code - unicode_table.start_code[segment]) + segment;
     const glyph_id = unicode_table.glyph_index_array[index];
     if (glyph_id == 0) {
-        return self.glyf_table.glyphs[glyph_id];
+        return glyph_id;
     }
 
     const result: usize = @as(usize, @intCast(glyph_id)) + @as(usize, @intCast(unicode_table.id_delta[segment]));
-    return self.glyf_table.glyphs[result % u16_modulo];
+    return result % u16_modulo;
+}
+
+pub fn getGlyph(self: Font, glyph_id: usize) Glyph {
+    return self.glyf_table.glyphs[glyph_id];
 }

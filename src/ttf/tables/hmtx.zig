@@ -33,4 +33,16 @@ pub const HmtxTable = struct {
         allocator.free(self.h_metrics);
         allocator.free(self.left_side_bearing);
     }
+
+    pub fn getGlyphSpacing(self: HmtxTable, glyph_id: usize) HorizontalMetric {
+        //Use the last h_metric advance width glyph_id greater than number of horizontal metrics
+        if (self.h_metrics.len > 0 and glyph_id >= self.h_metrics.len) {
+            return HorizontalMetric{
+                .advance_width = self.h_metrics[self.h_metrics.len - 1].advance_width,
+                .left_side_bearing = self.left_side_bearing[glyph_id],
+            };
+        }
+
+        return self.h_metrics[glyph_id];
+    }
 };

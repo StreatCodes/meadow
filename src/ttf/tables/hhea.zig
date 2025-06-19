@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub const HheaTable = struct {
-    version: u16, // 0x00010000 (1.0) //TODO SHOULD BE f16
+    version: u32, // 0x00010000 (1.0) //TODO SHOULD BE f32
     ascent: i16, // Distance from baseline of highest ascender
     descent: i16, // Distance from baseline of lowest descender
     line_gap: i16, // typographic line gap
@@ -18,7 +18,7 @@ pub const HheaTable = struct {
 
     pub fn parse(reader: std.io.AnyReader) !HheaTable {
         return HheaTable{
-            .version = try reader.readInt(u16, .big),
+            .version = try reader.readInt(u32, .big),
             .ascent = try reader.readInt(i16, .big),
             .descent = try reader.readInt(i16, .big),
             .line_gap = try reader.readInt(i16, .big),
