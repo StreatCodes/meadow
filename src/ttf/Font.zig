@@ -7,6 +7,7 @@ const GlyfTable = @import("./tables/glyf.zig").GlyfTable;
 const CMapTable = @import("./tables/cmap.zig").CMapTable;
 const HheaTable = @import("./tables/hhea.zig").HheaTable;
 const HmtxTable = @import("./tables/hmtx.zig").HmtxTable;
+// const MorxTable = @import("./tables/morx.zig").MorxTable;
 
 const Glyph = @import("./tables/glyf.zig").Glyph;
 const TableDirectory = headers.TableDirectory;
@@ -20,6 +21,7 @@ glyf_table: GlyfTable,
 cmap_table: CMapTable,
 hhea_table: HheaTable,
 hmtx_table: HmtxTable,
+// morx_table: MorxTable,
 
 fn getTableData(directory: []TableDirectory, table_data: []u8, tag: []const u8) []u8 {
     const headers_length = @sizeOf(OffsetTable) + (@sizeOf(TableDirectory) * directory.len);
@@ -96,6 +98,13 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
     const hmtx_reader = hmtx_stream.reader().any();
     const hmtx_table = try HmtxTable.parse(allocator, hmtx_reader, hhea_table.num_of_long_hor_metrics, glyf_table.glyphs.len);
 
+    // Didn't end up needing this
+    // Apple's advanced positional and ligature information
+    // const morx_data = getTableData(table_directories, table_data, "morx");
+    // var morx_stream = std.io.fixedBufferStream(morx_data);
+    // const morx_reader = morx_stream.reader().any();
+    // const morx_table = try MorxTable.parse(allocator, morx_reader);
+
     return Font{
         .head_table = head_table,
         .loca_table = loca_table,
@@ -104,14 +113,16 @@ pub fn parse(allocator: std.mem.Allocator, reader: std.io.AnyReader) !Font {
         .cmap_table = cmap_table,
         .hhea_table = hhea_table,
         .hmtx_table = hmtx_table,
+        // .morx_table = morx_table,
     };
 }
 
 pub fn deinit(font: Font, allocator: std.mem.Allocator) void {
-    defer font.glyf_table.deinit(allocator);
-    defer font.loca_table.deinit(allocator);
-    defer font.cmap_table.deinit(allocator);
-    defer font.hmtx_table.deinit(allocator);
+    font.glyf_table.deinit(allocator);
+    font.loca_table.deinit(allocator);
+    font.cmap_table.deinit(allocator);
+    font.hmtx_table.deinit(allocator);
+    // font.morx_table.deinit(allocator);
 }
 
 /// Returns the ID of the glyph for the given unicode character
